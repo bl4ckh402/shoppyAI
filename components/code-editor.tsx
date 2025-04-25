@@ -1,92 +1,177 @@
-"use client"
+// components/EnhancedCodeEditor.tsx
+import React from 'react';
+import Editor from '@monaco-editor/react';
 
-import { useEffect, useRef, useState } from "react"
-import { useTheme } from "next-themes"
-import { motion } from "framer-motion"
-
-interface CodeEditorProps {
-  code: string
-  language: string
+interface EnhancedCodeEditorProps {
+  className?: string;
+  value: string;
+  language: string;
+  path: string;
+  onChange: (value: string) => void;
+  autoSave?: boolean;
 }
 
-export default function CodeEditor({ code, language }: CodeEditorProps) {
-  const editorRef = useRef<HTMLDivElement>(null)
-  const { theme } = useTheme()
-  const [isHovered, setIsHovered] = useState(false)
-  const [lineCount, setLineCount] = useState(0)
+// Define language mappings for syntax highlighting
+const getLanguageFromPath = (path: string): string => {
+  const extension = path.split('.').pop()?.toLowerCase();
+  
+  switch (extension) {
+    case 'js':
+      return 'javascript';
+    case 'jsx':
+      return 'javascript';
+    case 'ts':
+      return 'typescript';
+    case 'tsx':
+      return 'typescript';
+    case 'html':
+      return 'html';
+    case 'css':
+      return 'css';
+    case 'scss':
+      return 'scss';
+    case 'json':
+      return 'json';
+    case 'md':
+      return 'markdown';
+    case 'liquid':
+      return 'liquid'; // Custom language for Shopify Liquid
+    default:
+      return 'plaintext';
+  }
+};
 
-  // In a real implementation, you would integrate a code editor like Monaco or CodeMirror
-  // This is a simplified placeholder
-  useEffect(() => {
-    if (editorRef.current) {
-      editorRef.current.textContent = code
-      // Count lines for line numbers
-      setLineCount(code.split("\n").length)
+// Define file type icons
+const FileIcon: React.FC<{ path: string }> = ({ path }) => {
+  const extension = path.split('.').pop()?.toLowerCase();
+  
+  const getIconForExtension = (ext?: string) => {
+    switch (ext) {
+      case 'js':
+      case 'jsx':
+        return '📜';
+      case 'ts':
+      case 'tsx':
+        return '📝';
+      case 'html':
+        return '🌐';
+      case 'css':
+      case 'scss':
+        return '🎨';
+      case 'json':
+        return '🔧';
+      case 'md':
+        return '📖';
+      case 'liquid':
+        return '💧';
+      default:
+        return '📄';
     }
-  }, [code])
+  };
+  
+  return <span className="mr-2">{getIconForExtension(extension)}</span>;
+};
 
-  // Generate line numbers
-  const lineNumbers = Array.from({ length: Math.max(1, lineCount) }, (_, i) => i + 1)
+const EnhancedCodeEditor: React.FC<EnhancedCodeEditorProps> = ({ 
+  className = '',
+  value,
+  language,
+  path,
+  onChange,
+  autoSave = true
+}) => {
+  // Handle content change
+  const handleChange = (newValue: string | undefined) => {
+    if (newValue === undefined) return;
+    onChange(newValue);
+  };
 
   return (
-    <div className="relative" onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
-      <div className="flex">
-        {/* Line numbers */}
-        <div className="p-4 pt-[calc(1rem+1px)] text-xs font-mono text-gray-500 dark:text-gray-400 bg-slate-900/80 dark:bg-slate-950/60 border-r border-slate-700/30 rounded-bl-xl select-none">
-          {lineNumbers.map((num) => (
-            <div key={num} className="leading-5">
-              {num}
-            </div>
-          ))}
+    <div className={`flex flex-col bg-gray-900 rounded-lg overflow-hidden ${className}`}>
+      <div className="bg-gray-800 px-4 py-2 flex items-center justify-between border-b border-gray-700">
+        <div className="flex items-center">
+          <FileIcon path={path} />
+          <span className="text-gray-200 font-medium">{path}</span>
         </div>
-
-        {/* Code content */}
-        <pre
-          ref={editorRef}
-          className="p-4 overflow-auto text-sm font-mono bg-slate-950/90 dark:bg-slate-950/70 text-slate-50 rounded-br-xl max-h-[400px] backdrop-blur-md transition-all duration-300 w-full leading-5"
-          style={{ tabSize: 2 }}
-        >
-          {code}
-        </pre>
+        
+        <div className="flex items-center space-x-2">
+          <div className="px-2 py-1 bg-gray-700 text-gray-300 rounded text-xs">
+            {language}
+          </div>
+        </div>
       </div>
-
-      {/* Language badge */}
-      <motion.div
-        className="absolute top-2 right-2 text-xs px-2 py-1 rounded bg-shopify-green/90 text-white font-medium"
-        initial={{ opacity: 0.8, y: 0 }}
-        animate={{ opacity: isHovered ? 1 : 0.8, y: isHovered ? -2 : 0 }}
-        transition={{ duration: 0.2 }}
-      >
-        {language}
-      </motion.div>
-
-      {/* Copy button that appears on hover */}
-      {code && (
-        <motion.button
-          className="absolute bottom-3 right-3 text-xs px-2 py-1 rounded-md bg-white/10 hover:bg-white/20 text-white backdrop-blur-md"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: isHovered ? 1 : 0, scale: isHovered ? 1 : 0.9 }}
-          transition={{ duration: 0.2 }}
-          onClick={() => {
-            navigator.clipboard.writeText(code)
-            // You could add a toast notification here
-          }}
-        >
-          Copy
-        </motion.button>
-      )}
-
-      {/* Syntax highlighting effect */}
-      {isHovered && code && (
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-shopify-green/5 to-transparent rounded-b-xl"></div>
-        </motion.div>
-      )}
+      
+      <Editor
+        height="100%"
+        language={language}
+        theme="vs-dark"
+        value={value}
+        onChange={handleChange}
+        options={{
+          minimap: { enabled: true },
+          fontSize: 14,
+          wordWrap: 'on',
+          scrollBeyondLastLine: false,
+          automaticLayout: true,
+          lineNumbers: 'on',
+          scrollbar: {
+            vertical: 'visible',
+            horizontal: 'visible',
+          },
+          folding: true,
+          tabSize: 2,
+          suggest: {
+            showClasses: true,
+            showFunctions: true,
+            showVariables: true,
+            showWords: true,
+            showSnippets: true,
+          },
+          contextmenu: true,
+          quickSuggestions: true,
+          formatOnType: true,
+          formatOnPaste: true,
+        }}
+        beforeMount={(monaco:any) => {
+          // Register a custom language for Liquid if it doesn't exist yet
+          if (!monaco.languages.getLanguages().some((lang:any) => lang.id === 'liquid')) {
+            monaco.languages.register({ id: 'liquid' });
+            
+            // Basic syntax highlighting for Liquid
+            monaco.languages.setMonarchTokensProvider('liquid', {
+              tokenizer: {
+                root: [
+                  // Liquid tags
+                  [/{%[\s\S]*?%}/, 'liquid-tag'],
+                  [/{{[\s\S]*?}}/, 'liquid-output'],
+                  // HTML
+                  [/<[^>]+>/, 'html-tag'],
+                  // Comments
+                  [/{#[\s\S]*?#}/, 'comment'],
+                ]
+              }
+            });
+            
+            // Define theme for Liquid
+            monaco.editor.defineTheme('liquid-dark', {
+              base: 'vs-dark',
+              inherit: true,
+              rules: [
+                { token: 'liquid-tag', foreground: '569cd6', fontStyle: 'bold' },
+                { token: 'liquid-output', foreground: 'ce9178' },
+                { token: 'comment', foreground: '6a9955' },
+                { token: 'html-tag', foreground: '569cd6' },
+              ],
+              colors: {}
+            });
+            
+            // Apply theme
+            monaco.editor.setTheme('liquid-dark');
+          }
+        }}
+      />
     </div>
-  )
-}
+  );
+};
+
+export default EnhancedCodeEditor;

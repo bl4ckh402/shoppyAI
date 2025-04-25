@@ -1,28 +1,40 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
+import { NextRequest, NextResponse } from "next/server"
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs"
+import { type Database } from "@/types/supabase"
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next()
-  const supabase = createMiddlewareClient({ req, res })
+  const supabase = createMiddlewareClient<Database>({ req, res })
 
   const {
     data: { session },
   } = await supabase.auth.getSession()
 
-  // Check if the user is authenticated
-  if (!session) {
-    // If the user is not authenticated and trying to access a protected route
-    const url = req.nextUrl.clone()
+  // Define public routes
+  const isPublicRoute = 
+    req.nextUrl.pathname === '/' ||
+    req.nextUrl.pathname.startsWith('/landing') ||
+    req.nextUrl.pathname.startsWith('/sign-in') ||
+    req.nextUrl.pathname.startsWith('/sign-up') ||
+    req.nextUrl.pathname.startsWith('/reset-password')
 
-    // Define public routes that don't require authentication
-    const publicRoutes = ["/", "/sign-in", "/sign-up", "/reset-password", "/landing"]
-    const isPublicRoute = publicRoutes.some((route) => url.pathname.startsWith(route))
+  // If there's no session and the route is protected
+  if (!session && !isPublicRoute) {
+    const redirectUrl = new URL('/sign-in', req.url)
+    redirectUrl.searchParams.set('redirect', req.nextUrl.pathname)
+    return NextResponse.redirect(redirectUrl)
+  }
 
-    if (!isPublicRoute) {
-      url.pathname = "/sign-in"
-      return NextResponse.redirect(url)
+  // If there's a session and trying to access auth pages
+  if (session && (req.nextUrl.pathname.startsWith('/sign-in') || req.nextUrl.pathname.startsWith('/sign-up'))) {
+    // Check if there's a redirect parameter
+    const redirectTo = req.nextUrl.searchParams.get('redirect')
+    if (redirectTo && !isPublicRoute) {
+      // If there's a redirect to a protected route, go there
+      return NextResponse.redirect(new URL(redirectTo, req.url))
     }
+    // Otherwise go to dashboard
+    return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 
   return res
@@ -31,11 +43,12 @@ export async function middleware(req: NextRequest) {
 export const config = {
   matcher: [
     /*
-     * Match all request paths except for the ones starting with:
+     * Match all request paths except:
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
+     * - public folder
      */
-    "/((?!_next/static|_next/image|favicon.ico).*)",
+    "/((?!_next/static|_next/image|favicon.ico|public).*)",
   ],
 }

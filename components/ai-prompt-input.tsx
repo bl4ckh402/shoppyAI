@@ -1,119 +1,179 @@
-"use client"
+// components/ShopifyAIPrompt.tsx
+import React, { useState, useRef, useEffect } from 'react';
+import { useShopifyAI } from '../contexts/ahoppyai-context';
 
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
-import { Textarea } from "@/components/ui/textarea"
-import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { LucideZap, LucideBrain } from "lucide-react"
-import { motion } from "framer-motion"
-
-interface AIPromptInputProps {
-  onGenerate: (code: string) => void
+interface ShopifyAIPromptProps {
+  onCodeGenerated?: (code: string) => void;
+  onMessageSent?: (message: string) => void;
+  placeholder?: string;
+  className?: string;
 }
 
-export default function AIPromptInput({ onGenerate }: AIPromptInputProps) {
-  const [prompt, setPrompt] = useState("")
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [isTyping, setIsTyping] = useState(false)
-
-  const handleGenerate = async () => {
-    if (!prompt.trim()) return
-
-    setIsGenerating(true)
-
-    // Simulate AI generation - in a real app, this would call your AI service
-    setTimeout(() => {
-      // Example generated Shopify Liquid code
-      const generatedCode = `{% section 'hero' %}
-<div class="product-grid">
-  {% for product in collection.products limit: 4 %}
-    <div class="product-card">
-      <img src="{{ product.featured_image | img_url: 'medium' }}" alt="{{ product.title }}">
-      <h3>{{ product.title }}</h3>
-      <p class="price">{{ product.price | money }}</p>
-      <button class="add-to-cart" data-product-id="{{ product.id }}">
-        Add to Cart
-      </button>
-    </div>
-  {% endfor %}
-</div>`
-
-      onGenerate(generatedCode)
-      setIsGenerating(false)
-    }, 1500)
-  }
-
+const AIPromptInput: React.FC<ShopifyAIPromptProps> = ({
+  onCodeGenerated,
+  onMessageSent,
+  placeholder = "Describe what you want to build for your Shopify store...",
+  className = ""
+}) => {
+  const [prompt, setPrompt] = useState('');
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [followUpSuggestions, setFollowUpSuggestions] = useState<string[]>([]);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  
+  const {
+    generating,
+    framework,
+    generateCode,
+    lastGeneratedCode,
+    promptHistory
+  } = useShopifyAI();
+  
+  // Adjust textarea height based on content
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${textareaRef.current.scrollHeight}px`;
+    }
+  }, [prompt]);
+  
+  // Update follow-up suggestions when lastGeneratedCode changes
+  useEffect(() => {
+    if (lastGeneratedCode?.followUpSuggestions) {
+      setFollowUpSuggestions(lastGeneratedCode.followUpSuggestions);
+    } else {
+      setFollowUpSuggestions([]);
+    }
+  }, [lastGeneratedCode]);
+  
+  // Handle prompt submission
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!prompt.trim()) return;
+    
+    try {
+      // Notify about the new message first
+      onMessageSent?.(prompt);
+      
+      const result = await generateCode(prompt);
+      
+      // Clear the prompt input
+      setPrompt('');
+      
+      // Call the callback if provided
+      if (onCodeGenerated && result.code) {
+        onCodeGenerated(result.code);
+      }
+    } catch (error) {
+      console.error('Error generating code:', error);
+    }
+  };
+  
+  // Handle follow-up suggestion click
+  const handleSuggestionClick = (suggestion: string) => {
+    setPrompt(suggestion);
+    setFollowUpSuggestions([]);
+    
+    // Focus the textarea
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  };
+  
   return (
-    <Card className="border-border/50 bg-card/30 backdrop-blur-lg shadow-lg rounded-xl transition-all duration-500 hover:shadow-shopify-green/10 group">
-      <CardContent className="pt-6 relative">
-        <motion.div
-          className="absolute -top-3 left-4 bg-shopify-green/90 text-white px-2 py-1 rounded-md text-xs font-medium flex items-center"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-        >
-          <LucideBrain className="w-3 h-3 mr-1" />
-          AI Prompt
-        </motion.div>
-        <Textarea
-          placeholder="Describe what you want to build for your Shopify store... (e.g., 'Create a product grid with hover effects and add to cart functionality')"
-          className="min-h-[120px] resize-none bg-background/50 backdrop-blur-md border-border/50 focus-visible:ring-shopify-green/50 transition-all duration-300"
-          value={prompt}
-          onChange={(e) => {
-            setPrompt(e.target.value)
-            setIsTyping(true)
-            setTimeout(() => setIsTyping(false), 1000)
-          }}
-        />
-        {isTyping && (
-          <motion.div
-            className="absolute bottom-2 right-2 text-xs text-shopify-green"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            AI is listening...
-          </motion.div>
-        )}
-      </CardContent>
-      <CardFooter className="flex justify-between">
-        <div className="text-sm text-muted-foreground">Powered by AI trained on Shopify best practices</div>
-        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-          <Button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className={`${
-              isGenerating ? "bg-shopify-dark-green" : "bg-shopify-green hover:bg-shopify-dark-green"
-            } text-white relative overflow-hidden group`}
-          >
-            <span className="absolute inset-0 w-0 bg-white/20 transition-all duration-500 ease-out group-hover:w-full"></span>
-            {isGenerating ? (
-              <div className="flex items-center">
-                <div className="relative mr-2 h-4 w-4">
-                  <motion.div
-                    className="absolute inset-0 rounded-full border-2 border-white border-t-transparent"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
-                  />
-                </div>
-                Generating...
-              </div>
-            ) : (
-              <div className="flex items-center">
-                <motion.div
-                  className="mr-2 h-4 w-4"
-                  initial={{ rotate: 0 }}
-                  whileHover={{ rotate: 180 }}
-                  transition={{ duration: 0.3 }}
-                >
-                  <LucideZap className="h-4 w-4" />
-                </motion.div>
-                Generate
-              </div>
+    <div className={`bg-background/50 rounded-lg shadow-lg transition-all ${className}`}>
+      <form onSubmit={handleSubmit}>
+        <div className="relative">
+          <textarea
+            ref={textareaRef}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onFocus={() => setIsExpanded(true)}
+            placeholder={placeholder}
+            className="w-full px-4 py-3 bg-background/50 border border-border/50 rounded-lg text-foreground placeholder:text-muted-foreground focus:border-shopify-green focus:ring-2 focus:ring-shopify-green/20 transition-all resize-none min-h-[60px]"
+            rows={isExpanded ? 4 : 2}
+          />
+          
+          {generating && (
+            <div className="absolute right-3 bottom-3 flex items-center text-muted-foreground text-sm">
+              <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-shopify-green mr-2"></div>
+              Generating...
+            </div>
+          )}
+        </div>
+        
+        <div className="flex justify-between mt-3">
+          <div className="flex space-x-2">
+            {promptHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsExpanded(!isExpanded)}
+                className="px-3 py-1 bg-background/50 hover:bg-muted text-foreground/70 rounded-md text-sm transition-colors"
+              >
+                {isExpanded ? 'Collapse' : 'History'}
+              </button>
             )}
-          </Button>
-        </motion.div>
-      </CardFooter>
-    </Card>
-  )
-}
+          </div>
+          
+          <button
+            type="submit"
+            disabled={generating || !prompt.trim()}
+            className={`px-4 py-2 rounded-md text-white font-medium transition-colors ${
+              generating || !prompt.trim()
+                ? 'bg-muted cursor-not-allowed'
+                : 'bg-shopify-green hover:bg-shopify-green/90'
+            }`}
+          >
+            {generating ? 'Generating...' : 'Generate'}
+          </button>
+        </div>
+      </form>
+      
+      {followUpSuggestions.length > 0 && (
+        <div className="mt-4">
+          <h4 className="text-sm font-medium text-muted-foreground mb-2">Follow-up suggestions:</h4>
+          <div className="flex flex-wrap gap-2">
+            {followUpSuggestions.map((suggestion, index) => (
+              <button
+                key={index}
+                onClick={() => handleSuggestionClick(suggestion)}
+                className="px-3 py-1 bg-background/50 hover:bg-muted text-foreground/70 rounded-md text-sm transition-colors"
+              >
+                {suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {isExpanded && promptHistory.length > 0 && (
+        <div className="mt-4 space-y-3">
+          <h4 className="text-sm font-medium text-muted-foreground">Conversation History:</h4>
+          <div className="max-h-60 overflow-y-auto space-y-3 pr-2">
+            {promptHistory.map((entry, index) => (
+              <div
+                key={index}
+                className={`p-2 rounded-lg text-sm ${
+                  entry.role === 'user'
+                    ? 'bg-muted/50 text-foreground'
+                    : 'bg-shopify-green/10 text-foreground'
+                }`}
+              >
+                <div className="font-medium text-xs text-muted-foreground mb-1">
+                  {entry.role === 'user' ? 'You' : 'AI'}:
+                </div>
+                <div>
+                  {entry.content.length > 150
+                    ? `${entry.content.substring(0, 150)}...`
+                    : entry.content}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default AIPromptInput;

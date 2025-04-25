@@ -1,83 +1,74 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
-import { useTheme } from "next-themes"
+import { useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
+
+type Particle = {
+  x: number;
+  y: number;
+  size: number;
+  color: string;
+  duration: number;
+  delay: number;
+};
 
 export default function FloatingParticles() {
-  const { theme } = useTheme()
-  const [particles, setParticles] = useState<Array<{ x: number; y: number; size: number; speed: number }>>([])
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const animationRef = useRef<number>()
-  const isDark = theme === "dark"
-
+  // Use useRef to store particles and mount state
+  // This prevents re-renders and infinite update loops
+  const particlesRef = useRef<Particle[]>([]);
+  const isMountedRef = useRef(false);
+  
+  // Create particles only once when component mounts
   useEffect(() => {
-    // Generate random particles
-    const newParticles = Array.from({ length: 20 }, () => ({
-      x: Math.random() * window.innerWidth,
-      y: Math.random() * window.innerHeight,
-      size: Math.random() * 3 + 1,
-      speed: Math.random() * 0.5 + 0.1,
-    }))
-    setParticles(newParticles)
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-      }
+    // Prevent multiple executions
+    if (isMountedRef.current) return;
+    
+    // Mark as mounted
+    isMountedRef.current = true;
+    
+    // Only create particles once
+    if (particlesRef.current.length === 0) {
+      const newParticles = Array.from({ length: 15 }, () => ({
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        size: Math.random() * 15 + 5,
+        color: Math.random() > 0.5 ? 'shopify-green' : 'blue',
+        duration: Math.random() * 20 + 10,
+        delay: Math.random() * 5
+      }));
+      
+      // Set to ref without triggering re-render
+      particlesRef.current = newParticles;
     }
-  }, [])
+    
+    // No cleanup needed since we're using refs
+  }, []); // Empty dependency array ensures this runs only once
 
-  useEffect(() => {
-    if (!canvasRef.current) return
-
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-
-    const animate = () => {
-      if (!ctx) return
-
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-      particles.forEach((particle) => {
-        const color = isDark ? "rgba(149, 191, 71, 0.2)" : "rgba(94, 142, 62, 0.15)"
-        ctx.fillStyle = color
-        ctx.beginPath()
-        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2)
-        ctx.fill()
-
-        // Move particles upward
-        particle.y -= particle.speed
-        // Reset position when particle goes off screen
-        if (particle.y < -10) {
-          particle.y = canvas.height + 10
-          particle.x = Math.random() * canvas.width
-        }
-      })
-
-      animationRef.current = requestAnimationFrame(animate)
-    }
-
-    animate()
-
-    const handleResize = () => {
-      if (canvas) {
-        canvas.width = window.innerWidth
-        canvas.height = window.innerHeight
-      }
-    }
-
-    window.addEventListener("resize", handleResize)
-    return () => {
-      window.removeEventListener("resize", handleResize)
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current)
-      }
-    }
-  }, [particles, isDark])
-
-  return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none z-0" />
+  // No conditional rendering based on state to avoid re-renders
+  return (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none">
+      {particlesRef.current.map((particle, index) => (
+        <motion.div
+          key={index}
+          className={`absolute rounded-full opacity-10 bg-${particle.color}`}
+          style={{
+            width: `${particle.size}px`,
+            height: `${particle.size}px`,
+            left: `${particle.x}%`,
+            top: `${particle.y}%`
+          }}
+          animate={{
+            x: [0, Math.random() * 100 - 50, 0],
+            y: [0, Math.random() * 100 - 50, 0]
+          }}
+          transition={{
+            duration: particle.duration,
+            repeat: Infinity,
+            delay: particle.delay,
+            ease: "easeInOut"
+          }}
+        />
+      ))}
+    </div>
+  )
 }

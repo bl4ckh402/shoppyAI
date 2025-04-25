@@ -1,185 +1,189 @@
 "use client"
 
-import { useTheme } from "next-themes"
-import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "framer-motion"
+import React, { useEffect, useState } from 'react';
+import { useShopifyAI } from '@/contexts/ahoppyai-context';
+import { useWebContainer } from '@/hooks/usewebContainer';
 
 interface ShopifyPreviewProps {
-  code: string
-  mode: string
+  mode: 'desktop' | 'mobile';
 }
 
-export default function ShopifyPreview({ code, mode }: ShopifyPreviewProps) {
-  const { theme } = useTheme()
-  const [isHovered, setIsHovered] = useState(Array(4).fill(false))
-  const [isLoading, setIsLoading] = useState(true)
-
-  // Simulate loading state
+export default function ShopifyPreview({ mode }: ShopifyPreviewProps) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
+  
+  const { currentProject, framework } = useShopifyAI();
+  const { 
+    webcontainer, 
+    isLoading: webContainerLoading, 
+    error: containerError,
+    mountFiles, 
+    startServer 
+  } = useWebContainer();
+  
   useEffect(() => {
-    if (code) {
-      setIsLoading(true)
-      const timer = setTimeout(() => setIsLoading(false), 800)
-      return () => clearTimeout(timer)
+    async function setupPreview() {
+      if (!webcontainer || !currentProject?.files) {
+        setFallbackMessage("Preview environment is initializing. Please wait a moment.");
+        return;
+      }
+      
+      try {
+        setLoading(true);
+        setError(null);
+        
+        // Mount files to WebContainer
+        const mountResult = await mountFiles(currentProject.files);
+        
+        if (!mountResult) {
+          throw new Error("Failed to mount files");
+        }
+        
+        // Start development server
+        const url = await startServer();
+        
+        if (!url) {
+          setFallbackMessage("Preview server is starting. This may take a moment.");
+          // Try again in 5 seconds
+          setTimeout(() => {
+            startServer().then(newUrl => {
+              if (typeof newUrl === "string") {
+                setPreviewUrl(newUrl);
+                setLoading(false);
+                setFallbackMessage(null);
+              } else {
+                setFallbackMessage("Preview is taking longer than expected. Please try refreshing.");
+              }
+            }).catch(err => {
+              console.error("Error in retry:", err);
+              setError("Failed to start preview server. Please try again.");
+            });
+          }, 5000);
+          return;
+        }
+        
+        if (typeof url === "string") {
+          setPreviewUrl(url);
+          setFallbackMessage(null);
+        } else {
+          setError("Failed to get preview URL. Please try refreshing.");
+        }
+      } catch (err:any) {
+        console.error("Error setting up preview:", err);
+        setError("Failed to initialize preview: " + (err.message || "Unknown error"));
+      } finally {
+        setLoading(false);
+      }
     }
-  }, [code])
+    
+    if (webcontainer && currentProject?.files) {
+      setupPreview();
+    }
+  }, [webcontainer, currentProject?.files, mountFiles, startServer]);
 
-  const handleMouseEnter = (index: number) => {
-    const newState = [...isHovered]
-    newState[index] = true
-    setIsHovered(newState)
+  // Render based on loading/error states
+  if (webContainerLoading || loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-gray-900 to-gray-950 rounded-lg border border-gray-800">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-shopify-green"></div>
+        <p className="mt-4 text-gray-400 text-sm animate-pulse">
+          Initializing preview environment...
+        </p>
+      </div>
+    );
   }
 
-  const handleMouseLeave = (index: number) => {
-    const newState = [...isHovered]
-    newState[index] = false
-    setIsHovered(newState)
+  if (error || containerError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-gray-900 to-gray-950 rounded-lg border border-gray-800 p-6">
+        <div className="w-12 h-12 rounded-full bg-red-900/30 flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-gray-300 font-medium mb-2">Preview Error</h3>
+        <p className="text-gray-400 text-center text-sm">
+          {error || containerError}
+        </p>
+        <div className="mt-4 text-gray-500 text-xs max-w-md text-center">
+          <p>This could be due to missing COOP/COEP headers. Check your Next.js configuration.</p>
+        </div>
+        <button 
+          className="mt-4 px-4 py-2 bg-shopify-green hover:bg-shopify-dark-green text-white rounded-lg transition-colors duration-300 text-sm"
+          onClick={() => window.location.reload()}
+        >
+          Reload Page
+        </button>
+      </div>
+    );
   }
 
-  const width = mode === "mobile" ? "max-w-[375px]" : "w-full"
-  const isDark = theme === "dark"
+  if (fallbackMessage) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-gray-900 to-gray-950 rounded-lg border border-gray-800 p-6">
+        <div className="animate-pulse w-12 h-12 rounded-full bg-blue-900/30 flex items-center justify-center mb-4">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h3 className="text-gray-300 font-medium mb-2">Starting Preview</h3>
+        <p className="text-gray-400 text-center text-sm">
+          {fallbackMessage}
+        </p>
+        <div className="mt-6 flex space-x-3">
+          <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse"></div>
+          <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse delay-150"></div>
+          <div className="h-2 w-2 bg-blue-500 rounded-full animate-pulse delay-300"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!previewUrl) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full bg-gradient-to-br from-gray-900 to-gray-950 rounded-lg border border-gray-800">
+        <p className="text-gray-400">No preview available</p>
+        <button 
+          className="mt-4 px-4 py-2 bg-shopify-green/80 hover:bg-shopify-green text-white rounded-lg transition-colors duration-300 text-sm"
+          onClick={() => window.location.reload()}
+        >
+          Refresh
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 flex justify-center">
-      <motion.div
-        className={`${width} border border-border/50 rounded-xl ${
-          isDark ? "bg-slate-900/50" : "bg-white/90"
-        } backdrop-blur-md transition-all duration-500 relative overflow-hidden`}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5 }}
-      >
-        {/* Browser-like top bar for desktop mode */}
-        {mode === "desktop" && (
-          <div className="h-6 bg-gray-100 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 rounded-t-xl flex items-center px-2 space-x-1.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-            <div className="w-2.5 h-2.5 rounded-full bg-yellow-400"></div>
-            <div className="w-2.5 h-2.5 rounded-full bg-green-400"></div>
-            <div className="ml-2 h-3.5 bg-gray-200 dark:bg-gray-700 rounded-sm flex-grow max-w-[200px]"></div>
-          </div>
-        )}
-
-        {/* Mobile frame for mobile mode */}
-        {mode === "mobile" && (
-          <div className="relative">
-            <div className="h-6 bg-black rounded-t-xl flex justify-center items-end pb-0.5">
-              <div className="w-20 h-3 rounded-b-xl bg-black border-b border-x border-gray-700"></div>
+    <div className="h-full w-full bg-gradient-to-br from-gray-900 to-gray-950 rounded-lg overflow-hidden flex items-center justify-center">
+      <div className={`bg-white relative ${
+        mode === 'mobile' 
+          ? 'w-[375px] h-[667px] rounded-xl shadow-2xl transition-all duration-500 transform hover:scale-105' 
+          : 'w-full h-full'
+      }`}>
+        {mode === 'mobile' && (
+          <>
+            <div className="absolute top-0 left-0 right-0 h-6 bg-gray-900 rounded-t-xl flex justify-center items-center">
+              <div className="w-20 h-1 bg-gray-700 rounded-full"></div>
             </div>
-          </div>
+            <div className="absolute bottom-0 left-0 right-0 h-4 bg-gray-900 rounded-b-xl"></div>
+          </>
         )}
-
-        {code ? (
-          <AnimatePresence mode="wait">
-            {isLoading ? (
-              <motion.div
-                key="loading"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="flex items-center justify-center min-h-[400px]"
-              >
-                <div className="flex flex-col items-center">
-                  <div className="relative h-10 w-10 mb-4">
-                    <motion.div
-                      className="absolute inset-0 rounded-full border-4 border-shopify-green border-t-transparent"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Number.POSITIVE_INFINITY, ease: "linear" }}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Rendering preview...</p>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div
-                key="content"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="p-4 min-h-[400px]"
-              >
-                <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-                  {/* This would be replaced with actual rendering of the Shopify theme */}
-                  <motion.div
-                    className="mb-6 bg-gray-100 dark:bg-gray-800 h-40 rounded-lg flex items-center justify-center border border-shopify-green/20 relative overflow-hidden"
-                    whileHover={{ scale: 1.02 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <div className="absolute inset-0 bg-gradient-to-br from-shopify-green/5 to-transparent"></div>
-                    <span className="text-sm relative z-10">Hero Section Preview</span>
-                    <div className="absolute bottom-2 right-2 bg-shopify-green/90 text-white text-xs px-2 py-0.5 rounded-full">
-                      Featured
-                    </div>
-                  </motion.div>
-                  <div className="grid grid-cols-2 gap-4">
-                    {[1, 2, 3, 4].map((i) => (
-                      <motion.div
-                        key={i}
-                        className={`bg-gray-100 dark:bg-gray-800 p-4 rounded-lg border transition-all duration-300 ${
-                          isHovered[i - 1]
-                            ? "border-shopify-green shadow-lg shadow-shopify-green/10"
-                            : "border-shopify-green/10"
-                        }`}
-                        whileHover={{ y: -5, scale: 1.02 }}
-                        onMouseEnter={() => handleMouseEnter(i - 1)}
-                        onMouseLeave={() => handleMouseLeave(i - 1)}
-                      >
-                        <div className="bg-gray-200 dark:bg-gray-700 h-24 mb-2 rounded-lg relative overflow-hidden">
-                          {isHovered[i - 1] && (
-                            <motion.div
-                              className="absolute inset-0 bg-shopify-green/10"
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              exit={{ opacity: 0 }}
-                            />
-                          )}
-                        </div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-lg mb-2"></div>
-                        <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded-lg w-1/2 mb-2"></div>
-                        <motion.div
-                          className="h-8 bg-shopify-green/20 rounded-lg flex items-center justify-center text-xs text-shopify-green font-medium"
-                          whileHover={{ scale: 1.05 }}
-                          whileTap={{ scale: 0.95 }}
-                        >
-                          {isHovered[i - 1] ? "Add to Cart" : ""}
-                        </motion.div>
-                      </motion.div>
-                    ))}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        ) : (
-          <div className="flex items-center justify-center min-h-[400px] text-gray-400 dark:text-gray-500">
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="text-center"
-            >
-              <div className="mb-4 opacity-50">
-                <svg
-                  width="64"
-                  height="64"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="mx-auto"
-                >
-                  <rect width="18" height="14" x="3" y="3" rx="2" />
-                  <path d="M7 7h10" />
-                  <path d="M7 11h10" />
-                  <path d="M7 15h10" />
-                </svg>
-              </div>
-              Generate code to see preview
-              <div className="mt-2 text-xs text-shopify-green">Type a prompt and click Generate</div>
-            </motion.div>
-          </div>
-        )}
-      </motion.div>
+        <iframe 
+          src={previewUrl} 
+          className={`bg-white ${
+            mode === 'mobile' 
+              ? 'w-full h-[calc(100%-10px)] rounded-lg mt-6' 
+              : 'w-full h-full'
+          }`}
+          sandbox="allow-scripts allow-same-origin allow-forms"
+          onError={(e) => {
+            console.error("iframe error:", e);
+            setError("Failed to load preview. Please try refreshing.");
+          }}
+        />
+      </div>
     </div>
-  )
+  );
 }

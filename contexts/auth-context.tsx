@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import type { Session, User } from "@supabase/supabase-js"
 import { supabase } from "@/lib/supabase"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 
 type AuthContextType = {
   user: User | null
@@ -22,25 +22,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Get session from Supabase
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setIsLoading(false)
-    })
+    // Initialize auth state
+    const initializeAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        setSession(session)
+        setUser(session?.user ?? null)
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setIsLoading(false)
-    })
+        // Subscribe to auth changes
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+          setSession(session)
+          setUser(session?.user ?? null)
+        })
 
-    return () => subscription.unsubscribe()
+        return () => {
+          subscription?.unsubscribe()
+        }
+      } catch (error) {
+        console.error("Error initializing auth:", error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    initializeAuth()
   }, [])
 
   const signUp = async (email: string, password: string, metadata?: { full_name?: string; username?: string }) => {
@@ -50,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
         options: {
           data: metadata,
+          emailRedirectTo: `${window.location.origin}/dashboard`,
         },
       })
       if (error) throw error
@@ -61,12 +70,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
       if (error) throw error
-      router.refresh()
+
+      // Get redirect URL from query params or use default
+      const redirectTo = searchParams.get('redirect') || '/dashboard'
+
+      // Update state
+      setSession(data.session)
+      setUser(data.session?.user ?? null)
+
+      // Use window.location for navigation to ensure proper protocol
+      window.location.href = redirectTo.startsWith('http') ? redirectTo : `${window.location.origin}${redirectTo}`
     } catch (error) {
       console.error("Error signing in:", error)
       throw error
@@ -77,7 +95,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut()
       if (error) throw error
-      router.refresh()
+      
+      // Clear state
+      setUser(null)
+      setSession(null)
+      
+      // Use window.location for sign-out navigation
+      window.location.href = `${window.location.origin}/sign-in`
     } catch (error) {
       console.error("Error signing out:", error)
       throw error
